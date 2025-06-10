@@ -1,0 +1,1 @@
+anvil --chain-id 1337 --accounts 3 --balance 1000

@@ -1,39 +1,37 @@
-# <h1 align="center"> Forge Template </h1>
+# <h1 align="center"> 再保险区块链案例 </h1>
 
-**Template repository for getting started quickly with Foundry projects**
+# 简介
+这是一个基于以太坊的再保险区块链案例，旨在展示如何使用 Solidity 编写智能合约来模拟再保险业务流程。该项目包括以下主要功能：
+- **再保险合约**：实现再保险的基本逻辑，包括保单创建、索赔处理等。
+- **索赔处理**：处理索赔请求，验证索赔条件。
+- **托管合约**：用于管理再保险资金的托管，确保资金安全。
 
-![Github Actions](https://github.com/foundry-rs/forge-template/workflows/CI/badge.svg)
 
-## Getting Started
-
-Click "Use this template" on [GitHub](https://github.com/foundry-rs/forge-template) to create a new repository with this repo as the initial state.
-
-Or, if your repo already exists, run:
-```sh
-forge init
-forge build
-forge test
+# 运行
+```bash
+# 安装依赖
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+npm install
 ```
+# 启动
 
-## Writing your first test
-
-All you need is to `import forge-std/Test.sol` and then inherit it from your test contract. Forge-std's Test contract comes with a pre-instatiated [cheatcodes environment](https://book.getfoundry.sh/cheatcodes/), the `vm`. It also has support for [ds-test](https://book.getfoundry.sh/reference/ds-test.html)-style logs and assertions. Finally, it supports Hardhat's [console.log](https://github.com/brockelmore/forge-std/blob/master/src/console.sol). The logging functionalities require `-vvvv`.
-
-```solidity
-pragma solidity 0.8.10;
-
-import "forge-std/Test.sol";
-
-contract ContractTest is Test {
-    function testExample() public {
-        vm.roll(100);
-        console.log(1);
-        emit log("hi");
-        assertTrue(true);
-    }
-}
+```bash
+# 启动本地私链
+./demo_scripts/01.start_private_chain.sh
 ```
+根据anvil输出的账户私钥  
 
-## Development
+    Private Keys
+    ==================
 
-This project uses [Foundry](https://getfoundry.sh). See the [book](https://book.getfoundry.sh/getting-started/installation.html) for instructions on how to install and use Foundry.
+    (0) 0xac0974▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇784d7bf4f2ff80
+    (1) 0x59c699▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇f4603b6b78690d
+    (2) 0x5de411▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇b9a804cdab365a
+
+修改
+`demo_scripts/02.deploy_contract.sh` 中的 `EDENT_PK` ，`REINSURER_PK` 和 `ORACLE_PK` 为上面输出的账户私钥。
+```bash
+# 部署合约
+./demo_scripts/02.deploy_contract.sh
+```
