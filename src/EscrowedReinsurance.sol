@@ -8,6 +8,7 @@ pragma solidity ^0.8.24;
  */
 
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "./PrimaryInsurance.sol";
 
 /// @title EscrowedReinsurance – 三方再保险合约（cedent / reinsurer / oracle）
 /// @notice 采用「两段式托管」：cedent 先锁定保费，reinsurer 在期限内注资 coverage，达到阈值后自动释放保费并进入 Active
@@ -24,7 +25,9 @@ contract EscrowedReinsurance is ReentrancyGuard {
 
     address public immutable cedent;    // 被保险人
     address public immutable reinsurer; // 再保险人
-    address public immutable oracle;    // 损失预言机
+    //address public immutable oracle;    // 损失预言机
+    address public immutable primaryPolicy; // 关联的 PrimaryInsurance 合约
+    uint256 public primaryClaimPayed;   // PrimaryInsurance 合约已支付的理赔金额
 
     uint256 public immutable premium;           // 保费（由 cedent 锁仓）
     uint256 public immutable coverageRequired;  // 要求的 coverage 总额
@@ -32,7 +35,8 @@ contract EscrowedReinsurance is ReentrancyGuard {
 
     uint256 public immutable fundingDeadline;   // reinsurer 需要在此时间前注资
     uint256 public immutable cedingRateBps;     // 赔付比例，基点制（8000 = 80%）
-    uint256 public immutable contractEnd;      // 合约终止时间
+    uint256 public start;            // 合约开始时间（进入Active状态时）
+    uint256 public immutable contractPeriod;    // 合约终止时间
 
     /* --------------------------------- 事件 ----------------------------------- */
     event CoverageDeposited(address indexed from, uint256 value, uint256 totalCoverage);
@@ -45,7 +49,6 @@ contract EscrowedReinsurance is ReentrancyGuard {
     /* --------------------------------- 修饰符 --------------------------------- */
     modifier onlyCedent()    { require(msg.sender == cedent,    "only cedent");    _; }
     modifier onlyReinsurer() { require(msg.sender == reinsurer, "only reinsurer"); _; }
-    modifier onlyOracle()    { require(msg.sender == oracle,    "only oracle");    _; }
     modifier inPhase(Phase p){ require(phase == p,               "bad phase");      _; }
 
     /* --------------------------------- 构造器 --------------------------------- */
@@ -54,7 +57,8 @@ contract EscrowedReinsurance is ReentrancyGuard {
     constructor(
         address _cedent,
         address _reinsurer,
-        address _oracle,
+        //address _oracle,
+        address _primaryPolicy,
         uint256 _premium,
         uint256 _coverageRequired,
         uint256 _fundingPeriod,
@@ -64,18 +68,20 @@ contract EscrowedReinsurance is ReentrancyGuard {
         require(msg.value == _premium,                  "premium escrow mismatch");
         require(_cedent    != address(0) &&
                 _reinsurer != address(0) &&
-                _oracle    != address(0),               "zero addr");
+                _primaryPolicy    != address(0),               "zero addr");
         require(_cedingRateBps <= 10_000,               "ceding rate out of range");
 
         cedent            = _cedent;
         reinsurer         = _reinsurer;
-        oracle            = _oracle;
+        //oracle           = _oracle;
+        primaryPolicy     = _primaryPolicy;
+        primaryClaimPayed = PrimaryInsurance(_primaryPolicy).totalClaimsPaid();
         premium           = _premium;
         coverageRequired  = _coverageRequired;
         coverageLeft      = 0; // 初始 coverage 为 0，等待 reinsurer 注资
         cedingRateBps     = _cedingRateBps;
         fundingDeadline   = block.timestamp + _fundingPeriod;
-        contractEnd       = block.timestamp + _contractPeriod;
+        contractPeriod    = _contractPeriod;
 
         phase = Phase.Funding;
     }
@@ -90,6 +96,7 @@ contract EscrowedReinsurance is ReentrancyGuard {
         nonReentrant
     {
         require(msg.value > 0, "zero deposit");
+        require(block.timestamp < fundingDeadline, "funding deadline passed");
         coverageLeft += msg.value;
         emit CoverageDeposited(msg.sender, msg.value, coverageLeft);
 
@@ -114,16 +121,19 @@ contract EscrowedReinsurance is ReentrancyGuard {
     }
 
     /* ---------------------------------- 理赔 ---------------------------------- */
-    /// @notice oracle 通知损失，按 cedingRate 赔付，封顶 coverageLeft
-    function notifyClaim(uint256 lossAmount)
+    /// @notice Credent 通知损失，按 cedingRate 赔付，封顶 coverageLeft
+    function notifyClaim()
         external
-        onlyOracle
+        onlyCedent
         inPhase(Phase.Active)
         nonReentrant
     {
-        require(lossAmount > 0, "zero loss");
-        require(block.timestamp < contractEnd, "contract ended");
-        uint256 payout = (lossAmount * cedingRateBps) / 10_000;
+        require(block.timestamp < start + contractPeriod, "contract ended");
+        require(coverageLeft > 0, "no coverage left");
+        uint256 newPrimaryClaimPayed = PrimaryInsurance(primaryPolicy).totalClaimsPaid()- primaryClaimPayed;
+        require(newPrimaryClaimPayed > 0, "no new claims");
+
+        uint256 payout = (newPrimaryClaimPayed * cedingRateBps) / 10_000;
         if (payout > coverageLeft) {
             payout = coverageLeft;
         }
@@ -132,7 +142,7 @@ contract EscrowedReinsurance is ReentrancyGuard {
         (bool ok,) = payable(cedent).call{value: payout}("");
         require(ok, "payout failed");
 
-        emit ClaimNotified(lossAmount, payout, coverageLeft);
+        emit ClaimNotified(newPrimaryClaimPayed, payout, coverageLeft);
     }
 
     /* ----------------------------- 取消 & 终止 ----------------------------- */
@@ -156,7 +166,7 @@ contract EscrowedReinsurance is ReentrancyGuard {
         inPhase(Phase.Active)
     {
         require(msg.sender == reinsurer || msg.sender == cedent, "not participant");
-        require(block.timestamp >= contractEnd, "contract not ended");
+        require(block.timestamp >= start + contractPeriod, "contract not ended");
         require(phase == Phase.Active || phase == Phase.Funding, "not in active or funding phase");
 
         phase = Phase.Closed;
@@ -189,6 +199,8 @@ contract EscrowedReinsurance is ReentrancyGuard {
     /* ------------------------------- 内部函数 ------------------------------- */
     function _activate() internal {
         phase = Phase.Active;
+        start = block.timestamp;
+        // 释放 cedent 锁定的保费
         (bool ok,) = payable(reinsurer).call{value: premium}("");
         require(ok, "release premium failed");
         emit PremiumReleased(premium);

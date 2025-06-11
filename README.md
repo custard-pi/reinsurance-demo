@@ -30,7 +30,7 @@ npm install
     (2) 0x5de411▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇▇b9a804cdab365a
 
 修改
-`demo_scripts/02.deploy_contract.sh` 中的 `EDENT_PK` ，`REINSURER_PK` 和 `ORACLE_PK` 为上面输出的账户私钥。
+`demo_scripts/02.deploy_contract.sh` 中的 `INSURED_PK` ，`CEDENT_PK` 和 `REINSURER_PK` 为上面输出的账户私钥。
 ```bash
 # 部署合约
 ./demo_scripts/02.deploy_contract.sh
